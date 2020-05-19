@@ -7259,6 +7259,16 @@ static int start_cpu(struct task_struct *p, bool boosted,
 	return walt_start_cpu(start_cpu);
 }
 
+
+static unsigned int uclamp_task_util(struct task_struct *p)
+{
+	unsigned int min_util = uclamp_eff_value(p, UCLAMP_MIN);
+	unsigned int max_util = uclamp_eff_value(p, UCLAMP_MAX);
+	unsigned int est_util = task_util(p);
+
+	return clamp(est_util, min_util, max_util);
+}
+
 unsigned int sched_smp_overlap_capacity;
 static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 				   bool boosted, bool prefer_idle,
@@ -7482,6 +7492,10 @@ retry:
 			if (idle_cpu(i)) {
 				int idle_idx = idle_get_state_idx(cpu_rq(i));
 
+				/* Skip CPUs which do not fit task requirements */
+				if (capacity_orig < uclamp_task_util(p))
+					continue;
+
 				/* Favor CPUs that won't end up running at a
 				 * high OPP.
 				 */
@@ -7673,7 +7687,7 @@ retry:
 /*
  * Disable WAKE_AFFINE in the case where task @p doesn't fit in the
  * capacity of either the waking CPU @cpu or the previous CPU @prev_cpu.
- * 
+ *
  * In that case WAKE_AFFINE doesn't make sense and we'll let
  * BALANCE_WAKE sort things out.
  */
@@ -7689,7 +7703,7 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 	/* Bring task utilization in sync with prev_cpu */
 	sync_entity_load_avg(&p->se);
 
-	return min_cap * 1024 < boosted_task_util(p) * capacity_margin;
+	return min_cap * 1024 < uclamp_task_util(p) * capacity_margin;
 }
 
 static inline int wake_to_idle(struct task_struct *p)
@@ -12017,6 +12031,10 @@ const struct sched_class fair_sched_class = {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	.task_change_group	= task_change_group_fair,
+#endif
+
+#ifdef CONFIG_UCLAMP_TASK
+	.uclamp_enabled		= 1,
 #endif
 #ifdef CONFIG_SCHED_WALT
 	.fixup_walt_sched_stats	= walt_fixup_sched_stats_fair,
