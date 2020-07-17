@@ -747,6 +747,25 @@ unsigned int sysctl_sched_uclamp_util_max = SCHED_CAPACITY_SCALE;
 /* All clamps are required to be less or equal than these values */
 static struct uclamp_se uclamp_default[UCLAMP_CNT];
 
+/*
+ * This static key is used to reduce the uclamp overhead in the fast path. It
+ * only disables the call to uclamp_rq_{inc, dec}() in enqueue/dequeue_task().
+ *
+ * This allows users to continue to enable uclamp in their kernel config with
+ * minimum uclamp overhead in the fast path.
+ *
+ * As soon as userspace modifies any of the uclamp knobs, the static key is
+ * disabled, since we have an actual users that make use of uclamp
+ * functionality.
+ *
+ * The knobs that would disable this static key are:
+ *
+ *   * A task modifying its uclamp value with sched_setattr().
+ *   * An admin modifying the sysctl_sched_uclamp_{min, max} via procfs.
+ *   * An admin modifying the cgroup cpu.uclamp.{min, max}
+ */
+static DEFINE_STATIC_KEY_TRUE(sched_uclamp_unused);
+
 /* Integer rounded range for each bucket */
 #define UCLAMP_BUCKET_DELTA DIV_ROUND_CLOSEST(SCHED_CAPACITY_SCALE, UCLAMP_BUCKETS)
 
@@ -947,6 +966,16 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 	SCHED_WARN_ON(!bucket->tasks);
 	if (likely(bucket->tasks))
 		bucket->tasks--;
+
+	/*
+	 * This could happen if sched_uclamp_unused was disabled while the
+	 * current task was running, hence we could end up with unbalanced call
+	 * to uclamp_rq_dec_id().
+	 */
+	if (unlikely(!bucket->tasks))
+		return;
+
+	bucket->tasks--;
 	uc_se->active = false;
 
 	/*
@@ -973,6 +1002,13 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p)
 {
 	enum uclamp_id clamp_id;
+	
+	/*
+	 * Avoid any overhead until uclamp is actually used by the userspace.
+	 * Including the potential JMP if we use static_branch_unlikely()
+	 */
+	if (static_branch_likely(&sched_uclamp_unused))
+		return;
 
 	if (unlikely(!p->sched_class->uclamp_enabled))
 		return;
@@ -990,6 +1026,12 @@ static inline void uclamp_rq_dec(struct rq *rq, struct task_struct *p)
 	enum uclamp_id clamp_id;
 
 	if (unlikely(!p->sched_class->uclamp_enabled))
+		return;
+	/*
+	 * Avoid any overhead until uclamp is actually used by the userspace.
+	 * Including the potential JMP if we use static_branch_unlikely()
+	 */
+	if (static_branch_likely(&sched_uclamp_unused))
 		return;
 
 	for_each_clamp_id(clamp_id)
@@ -1098,8 +1140,11 @@ int sysctl_sched_uclamp_handler(struct ctl_table *table, int write,
 		update_root_tg = true;
 	}
 
-	if (update_root_tg)
+	if (update_root_tg) {
 		uclamp_update_root_tg();
+		if (static_branch_unlikely(&sched_uclamp_unused))
+			static_branch_disable(&sched_uclamp_unused);
+	}
 
 	/*
 	 * We update all RUNNABLE tasks only when task groups are in use.
@@ -1164,6 +1209,9 @@ static void __setscheduler_uclamp(struct task_struct *p,
 	if (likely(!(attr->sched_flags & SCHED_FLAG_UTIL_CLAMP)))
 		return;
 
+	if (static_branch_unlikely(&sched_uclamp_unused))
+		static_branch_disable(&sched_uclamp_unused);
+
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MIN],
 			      attr->sched_util_min, true);
@@ -1196,6 +1244,22 @@ static void uclamp_fork(struct task_struct *p)
 	}
 }
 
+static void __init init_uclamp_rq(struct rq *rq)
+{
+	enum uclamp_id clamp_id;
+	struct uclamp_rq *uc_rq = rq->uclamp;
+
+	for_each_clamp_id(clamp_id) {
+		memset(uc_rq[clamp_id].bucket,
+		       0,
+		       sizeof(struct uclamp_bucket)*UCLAMP_BUCKETS);
+
+		uc_rq[clamp_id].value = uclamp_none(clamp_id);
+	}
+
+	rq->uclamp_flags = 0;
+}
+
 static void __init init_uclamp(void)
 {
 	struct uclamp_se uc_max = {};
@@ -1208,7 +1272,10 @@ static void __init init_uclamp(void)
 		memset(&cpu_rq(cpu)->uclamp, 0, sizeof(struct uclamp_rq));
 		cpu_rq(cpu)->uclamp_flags = 0;
 	}
-
+	
+	for_each_possible_cpu(cpu)
+		init_uclamp_rq(cpu_rq(cpu));
+	
 	for_each_clamp_id(clamp_id) {
 		uclamp_se_set(&init_task.uclamp_req[clamp_id],
 			      uclamp_none(clamp_id), false);
@@ -9867,6 +9934,9 @@ static ssize_t cpu_uclamp_write(struct kernfs_open_file *of, char *buf,
 	req = capacity_from_percent(buf);
 	if (req.ret)
 		return req.ret;
+	
+	if (static_branch_unlikely(&sched_uclamp_unused))
+		static_branch_disable(&sched_uclamp_unused);
 
 	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
