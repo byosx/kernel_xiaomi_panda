@@ -127,7 +127,7 @@ __read_mostly int scheduler_running;
  * part of the period that we allow rt tasks to run in us.
  * default: 0.95s
  */
-int sysctl_sched_rt_runtime = 950000;
+int sysctl_sched_rt_runtime = 118750;
 
 /* cpus with isolated domains */
 cpumask_var_t cpu_isolated_map;
@@ -1031,7 +1031,7 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 static inline void uclamp_rq_inc(struct rq *rq, struct task_struct *p)
 {
 	enum uclamp_id clamp_id;
-	
+
 	/*
 	 * Avoid any overhead until uclamp is actually used by the userspace.
 	 * Including the potential JMP if we use static_branch_unlikely()
@@ -1288,7 +1288,7 @@ static void uclamp_fork(struct task_struct *p)
 
 	for_each_clamp_id(clamp_id)
 		uclamp_se_set(&p->uclamp_req[clamp_id], uclamp_none(clamp_id), false);
-	
+
 }
 
 static void __init init_uclamp_rq(struct rq *rq)
@@ -1319,10 +1319,10 @@ static void __init init_uclamp(void)
 		memset(&cpu_rq(cpu)->uclamp, 0, sizeof(struct uclamp_rq)*UCLAMP_CNT);
 		cpu_rq(cpu)->uclamp_flags = 0;
 	}
-	
+
 	for_each_possible_cpu(cpu)
 		init_uclamp_rq(cpu_rq(cpu));
-	
+
 	for_each_clamp_id(clamp_id) {
 		uclamp_se_set(&init_task.uclamp_req[clamp_id],
 			      uclamp_none(clamp_id), false);
@@ -9981,7 +9981,7 @@ static ssize_t cpu_uclamp_write(struct kernfs_open_file *of, char *buf,
 	req = capacity_from_percent(buf);
 	if (req.ret)
 		return req.ret;
-	
+
 	if (static_branch_unlikely(&sched_uclamp_unused))
 		static_branch_disable(&sched_uclamp_unused);
 
