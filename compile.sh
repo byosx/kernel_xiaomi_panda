@@ -14,7 +14,7 @@ if [ -f "$FILE" ]; then
     sh ./proton-clang.sh
     cd ..
 else
-    git clone https://github.com/Daisy-Q-sources/scripts environment
+    git clone https://github.com/TogoFire/scripts environment
     cd environment || exit
     sh ./setup_env.sh
     cd ..
@@ -151,7 +151,7 @@ Commit: \`$COMMIT_POINT\`
 
 Changelog [Here!]($CHANGELOG)
 
-Kernel: \`sleepy ~ but Paimon is emergency food\`"
+Kernel: \`Panda\`"
 }
 
 if [ "$(whoami)" = "lacia" ] || [ "$(whoami)" = "lacia-chan" ]; then
@@ -173,7 +173,7 @@ build_clang() {
         CROSS_COMPILE=aarch64-linux-gnu-
 }
 
-make O=out ARCH=arm64 sleepy_defconfig
+make O=out ARCH=arm64 daisy_defconfig
 build_clang
 
 # Calculate how long compiling compiling the kernel took
@@ -182,7 +182,7 @@ DIFF=$(($BUILD_END - $BUILD_START))
 
 # Post the releasing in $CHATID
 TelegramSuccess() {
-    curl -F document=@"$(pwd)/AnyKernel3/Sleepy-r${RELEASE}-${BUILD_TIME}.zip" "https://api.telegram.org/bot$BOTTOKEN/sendDocument" \
+    curl -F document=@"$(pwd)/AnyKernel3/Panda-r${RELEASE}-${BUILD_TIME}.zip" "https://api.telegram.org/bot$BOTTOKEN/sendDocument" \
         -F chat_id="-$CHATID" \
         -F "disable_web_page_preview=true" \
         -F "parse_mode=Markdown" \
@@ -204,7 +204,7 @@ zip_kernelimage() {
     rm -rf "$(pwd)"/AnyKernel3/*.zip
     BUILD_TIME=$(date +"%d%m%Y-%H%M")
     cd AnyKernel3 || exit
-    zip -r9 Sleepy-r"${RELEASE}"-"${BUILD_TIME}".zip ./*
+    zip -r9 Panda-r"${RELEASE}"-"${BUILD_TIME}".zip ./*
     cd ..
 }
 
@@ -226,7 +226,7 @@ else
     FILE="$(pwd)/out/arch/arm64/boot/Image.gz-dtb"
     if [ -f "$FILE" ]; then
         zip_kernelimage
-        echo "The kernel has successfully been compiled and can be found in $(pwd)/AnyKernel3/Sleepy-r${RELEASE}-${BUILD_TIME}.zip"
+        echo "The kernel has successfully been compiled and can be found in $(pwd)/AnyKernel3/Panda-r${RELEASE}-${BUILD_TIME}.zip"
         read -r -p "Press enter to continue"
     fi
 fi
