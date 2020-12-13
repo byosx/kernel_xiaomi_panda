@@ -5,21 +5,6 @@
 
 #Default settings
 
-#Schedutil changes
-echo 1500 > /sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us
-echo 1000 > /sys/devices/system/cpu/cpufreq/schedutil/down_rate_limit_us
-echo 1401600 > /sys/devices/system/cpu/cpufreq/schedutil/hispeed_freq
-echo 85 > /sys/devices/system/cpu/cpufreq/schedutil/hispeed_load
-
-#GPU(KGSL) changes
-echo 6 > /sys/devices/platform/soc/1c00000.qcom,kgsl-3d0/kgsl/kgsl-3d0/default_pwrlevel
-
-#VM Changes
-echo 40 > /proc/sys/vm/dirty_ratio
-echo 60 > /proc/sys/vm/vfs_cache_pressure
-echo 85 > /proc/sys/vm/swappiness
-echo 3600 > /proc/sys/vm/stat_interval
-
 #Uclamp changes (reduces jitter,apparently)
 
 #system-wide
@@ -29,7 +14,7 @@ sysctl -w kernel.sched_util_clamp_min=128
 #top-app
 echo max > /dev/cpuset/top-app/uclamp.max
 echo 85 > /dev/cpuset/top-app/uclamp.min
-echo 1   > /dev/cpuset/top-app/uclamp.latency_sensitive 
+echo 1   > /dev/cpuset/top-app/uclamp.latency_sensitive
 
 #foreground
 echo 50 > /dev/cpuset/foreground/uclamp.max
